@@ -24,14 +24,17 @@
 	'use strict';
 
 	var Reveal;
+	var storytellerBackgrounds = [];
 
 	// The reveal.js version
 	var VERSION = '3.8.0';
 
-	var SLIDES_SELECTOR = '.slides section',
-		HORIZONTAL_SLIDES_SELECTOR = '.slides>section',
-		VERTICAL_SLIDES_SELECTOR = '.slides>section.present>section',
-		HOME_SLIDE_SELECTOR = '.slides>section:first-of-type',
+	var LAST_SLIDES_CONTAINER = '.present-page .switch-wrapper > div:last-of-type ';
+
+	var SLIDES_SELECTOR = LAST_SLIDES_CONTAINER + '.slides section',
+		HORIZONTAL_SLIDES_SELECTOR = LAST_SLIDES_CONTAINER + '.slides>section',
+		VERTICAL_SLIDES_SELECTOR = LAST_SLIDES_CONTAINER + '.slides>section.present>section',
+		HOME_SLIDE_SELECTOR = LAST_SLIDES_CONTAINER + '.slides>section:first-of-type',
 		UA = navigator.userAgent,
 
 		// Configuration defaults, can be overridden at initialization time
@@ -44,6 +47,10 @@
 
 			// Factor of the display size that should remain empty around the content
 			margin: 0.04,
+			
+			// StoryTeller: Custom margins
+			marginVertical: 0.05,
+			marginHorizontal: 0.12,
 
 			// Bounds for smallest/largest possible scale to apply to content
 			minScale: 0.2,
@@ -386,8 +393,44 @@
 	 */
 	function initialize( options ) {
 
+		// StoryTeller: To support multiple initializations
+		var finishInitialize = function() {
+            var allWrappers = document.querySelectorAll( '.reveal' );
+            var allSlides = document.querySelectorAll( '.reveal .slides' );
+
+            // StoryTeller: Using Last Element. Fix while during animations there are multiple ".reveal" elements
+            dom.wrapper = allWrappers[allWrappers .length - 1];
+            dom.slides = allSlides[allSlides.length - 1];
+
+            // Cache references to key DOM elements
+            // dom.wrapper = document.querySelector( '.reveal' );
+            // dom.slides = document.querySelector( '.reveal .slides' );
+
+            // Force a layout when the whole page, incl fonts, has loaded
+            window.addEventListener( 'load', layout, false );
+
+            var query = Reveal.getQueryHash();
+
+            // Do not accept new dependencies via query config to avoid
+            // the potential of malicious script injection
+            if( typeof query['dependencies'] !== 'undefined' ) delete query['dependencies'];
+
+            // Copy options over to our config object
+            extend( config, options );
+            extend( config, query );
+
+            // Hide the address bar in mobile browsers
+            hideAddressBar();
+
+            // Loads the dependencies and continues to #start() once done
+            load();
+        };
+
 		// Make sure we only initialize once
-		if( initialized === true ) return;
+		if( initialized === true ) {
+			finishInitialize();
+			return;
+		}
 
 		initialized = true;
 
@@ -416,6 +459,7 @@
 			return;
 		}
 
+		/*
 		// Cache references to key DOM elements
 		dom.wrapper = document.querySelector( '.reveal' );
 		dom.slides = document.querySelector( '.reveal .slides' );
@@ -438,7 +482,9 @@
 
 		// Loads dependencies and continues to #start() once done
 		load();
+		*/
 
+		finishInitialize();
 	}
 
 	/**
@@ -703,22 +749,31 @@
 	 */
 	function setupDOM() {
 
-		// Prevent transitions while we're loading
-		dom.slides.classList.add( 'no-transition' );
-
-		if( isMobileDevice ) {
-			dom.wrapper.classList.add( 'no-hover' );
-		}
-		else {
-			dom.wrapper.classList.remove( 'no-hover' );
+		// StoryTeller: Add Assert
+		if (dom && dom.slides) {
+			// Prevent transitions while we're loading
+			dom.slides.classList.add( 'no-transition' );
 		}
 
+		// StoryTeller: Add Assert
+		if (dom && dom.wrapper) {
+			if( isMobileDevice ) {
+				dom.wrapper.classList.add( 'no-hover' );
+			}
+			else {
+				dom.wrapper.classList.remove( 'no-hover' );
+			}
+		}
+
+		// StoryTeller: Doesn't work on iPhone X / XS
+		/*
 		if( /iphone/gi.test( UA ) ) {
 			dom.wrapper.classList.add( 'ua-iphone' );
 		}
 		else {
 			dom.wrapper.classList.remove( 'ua-iphone' );
 		}
+		*/
 
 		// Background element
 		dom.background = createSingletonNode( dom.wrapper, 'div', 'backgrounds', null );
@@ -828,9 +883,15 @@
 
 		var slideSize = getComputedSlideSize( window.innerWidth, window.innerHeight );
 
-		// Dimensions of the PDF pages
-		var pageWidth = Math.floor( slideSize.width * ( 1 + config.margin ) ),
-			pageHeight = Math.floor( slideSize.height * ( 1 + config.margin ) );
+		/*
+			// Dimensions of the PDF pages
+			var pageWidth = Math.floor( slideSize.width * ( 1 + config.margin ) ),
+				pageHeight = Math.floor( slideSize.height * ( 1 + config.margin ) );
+		*/
+
+		// StoryTeller: Use marginHorizontal / marginVertical
+		var pageWidth = Math.floor( slideSize.width * ( 1 + config.marginHorizontal ) ),
+			pageHeight = Math.floor( slideSize.height * ( 1 + config.marginVertical ) );
 
 		// Dimensions of slides within the pages
 		var slideWidth = slideSize.width,
@@ -1011,7 +1072,8 @@
 	function setupScrollPrevention() {
 
 		setInterval( function() {
-			if( dom.wrapper.scrollTop !== 0 || dom.wrapper.scrollLeft !== 0 ) {
+			// StoryTeller: Add assert dom && dom.wrapper
+			if( dom && dom.wrapper && ( dom.wrapper.scrollTop !== 0 || dom.wrapper.scrollLeft !== 0 ) )  {
 				dom.wrapper.scrollTop = 0;
 				dom.wrapper.scrollLeft = 0;
 			}
@@ -1110,6 +1172,15 @@
 
 		}
 
+		// StoryTeller: Notify when all background are created
+		setTimeout( function() {
+			dispatchEvent( 'backgroundsReady', {		
+				'backgrounds': storytellerBackgrounds		
+			} );
+	
+			storytellerBackgrounds = [];		
+		}, 1 );
+
 	}
 
 	/**
@@ -1183,7 +1254,12 @@
 			backgroundRepeat: slide.getAttribute( 'data-background-repeat' ),
 			backgroundPosition: slide.getAttribute( 'data-background-position' ),
 			backgroundTransition: slide.getAttribute( 'data-background-transition' ),
-			backgroundOpacity: slide.getAttribute( 'data-background-opacity' )
+			backgroundOpacity: slide.getAttribute( 'data-background-opacity' ),
+
+			// StoryTeller: Store slide and data ids
+			// TODO: Potentially broken. In 3.6 this was part of createBackground, now it is in synchBackground
+			slideId: slide.getAttribute( 'slide-id' ),		
+			dataId: slide.getAttribute( 'data-id' )
 		};
 
 		if( data.background ) {
@@ -1199,6 +1275,14 @@
 		// Create a hash for this combination of background settings.
 		// This is used to determine when two slide backgrounds are
 		// the same.
+
+		// StoryTeller
+		// TODO: Potentially broken. In 3.6 this was part of createBackground, now it is in synchBackground
+		var backgroundObj = {		
+			slideId: data.slideId,		
+			slideDataId: data.dataId		
+		};
+
 		if( data.background || data.backgroundColor || data.backgroundImage || data.backgroundVideo || data.backgroundIframe ) {
 			element.setAttribute( 'data-background-hash', data.background +
 															data.backgroundSize +
@@ -1210,6 +1294,11 @@
 															data.backgroundPosition +
 															data.backgroundTransition +
 															data.backgroundOpacity );
+
+			// StoryTeller
+			// TODO: Potentially broken. In 3.6 this was part of createBackground, now it is in synchBackground
+			backgroundObj.backgroundColor = data.background || data.backgroundColor;		
+			backgroundObj.backgroundImage = data.backgroundImage;
 		}
 
 		// Additional and optional background properties
@@ -1250,6 +1339,12 @@
 					slide.classList.add( 'has-light-background' );
 				}
 			}
+		}
+
+		// StoryTeller Populate backgrounds
+		// TODO: Potentially broken. In 3.6 this was part of createBackground, now it is in synchBackground
+		if (backgroundObj && backgroundObj.slideId) {		
+			storytellerBackgrounds.push(backgroundObj);		
 		}
 
 	}
@@ -1350,12 +1445,20 @@
 		}
 
 		if( config.mouseWheel ) {
-			document.addEventListener( 'DOMMouseScroll', onDocumentMouseScroll, false ); // FF
-			document.addEventListener( 'mousewheel', onDocumentMouseScroll, false );
+			// document.addEventListener( 'DOMMouseScroll', onDocumentMouseScroll, false ); // FF
+			// document.addEventListener( 'mousewheel', onDocumentMouseScroll, false );
+
+			// StoryTeller: Use deBouncedOnDocumentMouseScroll
+			document.addEventListener( 'DOMMouseScroll', deBouncedOnDocumentMouseScroll, false ); // FF
+			document.addEventListener( 'mousewheel', deBouncedOnDocumentMouseScroll, false );
 		}
 		else {
-			document.removeEventListener( 'DOMMouseScroll', onDocumentMouseScroll, false ); // FF
-			document.removeEventListener( 'mousewheel', onDocumentMouseScroll, false );
+			// document.removeEventListener( 'DOMMouseScroll', onDocumentMouseScroll, false ); // FF
+			// document.removeEventListener( 'mousewheel', onDocumentMouseScroll, false );
+
+			// StoryTeller: Use deBouncedOnDocumentMouseScroll
+			document.removeEventListener( 'DOMMouseScroll', deBouncedOnDocumentMouseScroll, false ); // FF
+			document.removeEventListener( 'mousewheel', deBouncedOnDocumentMouseScroll, false );
 		}
 
 		// Rolling 3D links
@@ -2368,8 +2471,12 @@
 		};
 
 		// Reduce available space by margin
-		size.presentationWidth -= ( size.presentationWidth * config.margin );
-		size.presentationHeight -= ( size.presentationHeight * config.margin );
+		// size.presentationWidth -= ( size.presentationWidth * config.margin );
+		// size.presentationHeight -= ( size.presentationHeight * config.margin );
+
+		// StoryTeller: Use marginHorizontal / marginVertical
+		size.presentationWidth -= ( size.presentationWidth * config.marginHorizontal );
+		size.presentationHeight -= ( size.presentationHeight * config.marginVertical );
 
 		// Slide width may be a percentage of available width
 		if( typeof size.width === 'string' && /%$/.test( size.width ) ) {
@@ -4053,7 +4160,13 @@
 				if( el.getAttribute( 'src' ) !== el.getAttribute( 'data-src' ) ) {
 					el.removeEventListener( 'load', startEmbeddedIframe ); // remove first to avoid dupes
 					el.addEventListener( 'load', startEmbeddedIframe );
-					el.setAttribute( 'src', el.getAttribute( 'data-src' ) );
+					// el.setAttribute( 'src', el.getAttribute( 'data-src' ) );
+
+					// StoryTeller
+					if (el && el.contentWindow && el.contentWindow.location &&
+						typeof el.contentWindow.location.replace === 'function') {
+						el.contentWindow.location.replace(el.getAttribute( 'data-src' ));
+					}
 				}
 			} );
 
@@ -4139,9 +4252,14 @@
 			unloadIframes: true
 		}, options || {} );
 
-		if( element && element.parentNode ) {
+		// StoryTeller: Slides wrapper element for turing off media on slide()
+		var embeddedWrapperElement = (element && element.parentNode) || document.getElementById('slides-presentations');
+
+		// if( element && element.parentNode ) {
+		if( embeddedWrapperElement ) {
 			// HTML5 media elements
-			toArray( element.querySelectorAll( 'video, audio' ) ).forEach( function( el ) {
+			// toArray( element.querySelectorAll( 'video, audio' ) ).forEach( function( el ) {
+			toArray( embeddedWrapperElement.querySelectorAll( 'video, audio' ) ).forEach( function( el ) {
 				if( !el.hasAttribute( 'data-ignore' ) && typeof el.pause === 'function' ) {
 					el.setAttribute('data-paused-by-reveal', '');
 					el.pause();
@@ -4149,20 +4267,23 @@
 			} );
 
 			// Generic postMessage API for non-lazy loaded iframes
-			toArray( element.querySelectorAll( 'iframe' ) ).forEach( function( el ) {
+			// toArray( element.querySelectorAll( 'iframe' ) ).forEach( function( el ) {
+			toArray( embeddedWrapperElement.querySelectorAll( 'iframe' ) ).forEach( function( el ) {
 				if( el.contentWindow ) el.contentWindow.postMessage( 'slide:stop', '*' );
 				el.removeEventListener( 'load', startEmbeddedIframe );
 			});
 
 			// YouTube postMessage API
-			toArray( element.querySelectorAll( 'iframe[src*="youtube.com/embed/"]' ) ).forEach( function( el ) {
+			// toArray( element.querySelectorAll( 'iframe[src*="youtube.com/embed/"]' ) ).forEach( function( el ) {
+			toArray( embeddedWrapperElement.querySelectorAll( 'iframe[src*="youtube.com/embed/"]' ) ).forEach( function( el ) {
 				if( !el.hasAttribute( 'data-ignore' ) && el.contentWindow && typeof el.contentWindow.postMessage === 'function' ) {
 					el.contentWindow.postMessage( '{"event":"command","func":"pauseVideo","args":""}', '*' );
 				}
 			});
 
 			// Vimeo postMessage API
-			toArray( element.querySelectorAll( 'iframe[src*="player.vimeo.com/"]' ) ).forEach( function( el ) {
+			// toArray( element.querySelectorAll( 'iframe[src*="player.vimeo.com/"]' ) ).forEach( function( el ) {
+			toArray( embeddedWrapperElement.querySelectorAll( 'iframe[src*="player.vimeo.com/"]' ) ).forEach( function( el ) {
 				if( !el.hasAttribute( 'data-ignore' ) && el.contentWindow && typeof el.contentWindow.postMessage === 'function' ) {
 					el.contentWindow.postMessage( '{"method":"pause"}', '*' );
 				}
@@ -4170,10 +4291,17 @@
 
 			if( options.unloadIframes === true ) {
 				// Unload lazy-loaded iframes
-				toArray( element.querySelectorAll( 'iframe[data-src]' ) ).forEach( function( el ) {
+				// toArray( element.querySelectorAll( 'iframe[data-src]' ) ).forEach( function( el ) {
+				toArray( embeddedWrapperElement.querySelectorAll( 'iframe[data-src]' ) ).forEach( function( el ) {
+					// StoryTeller
+					if (el && el.contentWindow && el.contentWindow.location &&
+						typeof el.contentWindow.location.replace === 'function') {		
+						el.contentWindow.location.replace('about:blank');		
+					}
+
 					// Only removing the src doesn't actually unload the frame
 					// in all browsers (Firefox) so we set it to blank first
-					el.setAttribute( 'src', 'about:blank' );
+					// el.setAttribute( 'src', 'about:blank' );
 					el.removeAttribute( 'src' );
 				} );
 			}
@@ -4359,7 +4487,66 @@
 			// If we're configured to reflect the current slide in the
 			// URL without pushing to history.
 			else if( config.hash ) {
-				window.history.replaceState( null, null, '#' + locationHash() );
+				// window.history.replaceState( null, null, '#' + locationHash() );
+
+				// StoryTeller Start
+				// Preserve location state
+				// Suppress Turbolinks
+				// Notify turbolinks for url change by sending popState event
+				var curUrl = window.location.href;
+				var curState = window.history.state;
+		
+				var newUrl = window.location.href.replace(/#.*$/gim, '') + '#' + locationHash();
+				var newState;
+				var newInnerState;
+		
+				if (curState) {
+					newInnerState = Object.assign(
+						{},
+						curState.state, 
+						{
+							suppressTurbolinks: true,
+							suppressTurbolinksRequest: true
+						}
+					);
+
+					newState = Object.assign(
+						{},
+						curState,
+						{
+							state: newInnerState 
+						}
+					);
+
+					// Same, with spread ...
+					// Unfortunately not supported in node_modules
+					//   newState = {
+					// 	...curState,
+					// 	state: {
+					// 	  ...curState.state,
+					// 	  suppressTurbolinks: true,
+					// 	  suppressTurbolinksRequest: true
+					// 	}
+					//   };
+				} else {
+				  newState = {
+					state: {
+					  suppressTurbolinks: true,
+					  suppressTurbolinksRequest: true
+					}
+				  };
+				}
+		
+				if (curUrl !== newUrl || !_.isEqual(curState, newState)) {
+				  var popStateEvent = new PopStateEvent('popstate', { state: newState });
+		
+				  window.history.replaceState(newState, null, newUrl);
+		
+				  // StoryTeller: Send notification to all observers of history.listen(), otherwise not triggered by replaceState()
+				  window.dispatchEvent(popStateEvent);
+				}
+
+				// StoryTeller End
 			}
 			// If history and hash are both disabled, a hash may still
 			// be added to the URL by clicking on a href with a hash
@@ -5446,6 +5633,17 @@
 		}
 
 	}
+
+	// StoryTeller: Used to avoid multiple slides scroll on single two finger slide gesture on MAC device
+	var deBouncedOnDocumentMouseScroll = _.debounce(
+		onDocumentMouseScroll,
+		100,
+		{
+			leading: true,
+			trailing: false,
+			maxWait: 1500
+		}
+	);
 
 	/**
 	 * Handles mouse wheel scrolling, throttled to avoid skipping
