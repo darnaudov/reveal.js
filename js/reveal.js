@@ -4253,7 +4253,7 @@
 		}, options || {} );
 
 		// StoryTeller: Slides wrapper element for turing off media on slide()
-		var embeddedWrapperElement = (element && element.parentNode) || document.getElementById('slides-presentations');
+		var embeddedWrapperElement = (element && element.parentNode) || document.getElementById('presentation');
 
 		// if( element && element.parentNode ) {
 		if( embeddedWrapperElement ) {
