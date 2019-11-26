@@ -4501,7 +4501,8 @@
 				var newInnerState;
 		
 				if (curState) {
-					newInnerState = extend(
+					newInnerState = Object.assign(
+						{},
 						curState.state, 
 						{
 							suppressTurbolinks: true,
@@ -4509,7 +4510,8 @@
 						}
 					);
 
-					newState = extend(
+					newState = Object.assign(
+						{},
 						curState,
 						{
 							state: newInnerState 
